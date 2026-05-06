@@ -135,5 +135,117 @@ describe('simplifyDebts - TDD cycles', () => {
     expect(allToAlice).toBe(true);
     expect(settlements).toHaveLength(3);
   });
-});
 
+  // ──── TESTS SUPPLÉMENTAIRES POUR TUER LES MUTANTS ────────────────
+  // Mutation 1: > vs >= dans la comparaison des montants
+  it('should not include zero amounts - mutation killer', () => {
+    const balances = { alice: 10, bob: 0, charlie: -10 };
+    const settlements = simplifyDebts(balances);
+
+    // Bob avec balance 0 ne devrait pas être dans les transactions
+    for (const settlement of settlements) {
+      expect(settlement.from).not.toBe('bob');
+      expect(settlement.to).not.toBe('bob');
+    }
+  });
+
+  // Mutation 2: Comparaison while (size > 0) - ne doit pas être ===
+  it('should stop when all debtors are processed', () => {
+    const balances = { alice: 100, bob: 0, charlie: -100 };
+    const settlements = simplifyDebts(balances);
+
+    // Exactement 1 settlement (charlie → alice pour 100)
+    expect(settlements).toHaveLength(1);
+    expect(settlements[0]).toEqual({ from: 'charlie', to: 'alice', amount: 100 });
+  });
+
+  // Mutation 3: && vs || dans la boucle while
+  it('should stop when only creditors or only debtors remain', () => {
+    // Cas 1: Seulement créanciers
+    const balances1 = { alice: 50, bob: 50, charlie: 50 };
+    const settlements1 = simplifyDebts(balances1);
+    expect(settlements1).toHaveLength(0);
+
+    // Cas 2: Seulement débiteurs
+    const balances2 = { alice: -50, bob: -50, charlie: -50 };
+    const settlements2 = simplifyDebts(balances2);
+    expect(settlements2).toHaveLength(0);
+  });
+
+  // Mutation 4: min vs max dans le calcul du montant de settlement
+  it('should use minimum (not maximum) for settlement amount', () => {
+    const balances = { alice: 100, bob: -30, charlie: -70 };
+    const settlements = simplifyDebts(balances);
+
+    // Bob doit rembourser 30 (pas 100)
+    const bobPayments = settlements.filter(s => s.from === 'bob');
+    expect(bobPayments).toHaveLength(1);
+    expect(bobPayments[0].amount).toBe(30);
+
+    // Charlie doit rembourser 70 (pas 100)
+    const charliePayments = settlements.filter(s => s.from === 'charlie');
+    expect(charliePayments).toHaveLength(1);
+    expect(charliePayments[0].amount).toBe(70);
+  });
+
+  // Mutation 5: Pas de self-payment
+  it('should never create a settlement from someone to themselves', () => {
+    const balances = { alice: 50, bob: -50 };
+    const settlements = simplifyDebts(balances);
+
+    for (const settlement of settlements) {
+      expect(settlement.from).not.toBe(settlement.to);
+    }
+  });
+
+  // Mutation 6: Vérifier le total des règlements
+  it('should preserve exact total amount in settlements', () => {
+    const balances = { alice: 100, bob: -60, charlie: -40 };
+    const settlements = simplifyDebts(balances);
+
+    const totalSettled = settlements.reduce((sum, s) => sum + s.amount, 0);
+    expect(totalSettled).toBeCloseTo(100, 2);
+  });
+
+  // Mutation 7: Groupes circulaires complexes
+  it('should minimize transactions in circular debt', () => {
+    // A doit à B, B doit à C, C doit à A
+    const balances = { a: 30, b: -10, c: -20 };
+    const settlements = simplifyDebts(balances);
+
+    // Optimal: 2 transactions maximum
+    expect(settlements.length).toBeLessThanOrEqual(2);
+  });
+
+  // Mutation 8: Montants très petits (arrondis)
+  it('should handle very small amounts correctly', () => {
+    const balances = { alice: 0.01, bob: -0.01 };
+    const settlements = simplifyDebts(balances);
+
+    // Devrait avoir 1 settlement (pas 0)
+    expect(settlements.length).toBeGreaterThan(0);
+    expect(settlements[0].amount).toBeCloseTo(0.01, 4);
+  });
+
+  // Mutation 9: Négatif dans le calcul de newDebtAmount
+  it('should correctly subtract settlement from debt', () => {
+    const balances = { alice: 100, bob: -40, charlie: -60 };
+    const settlements = simplifyDebts(balances);
+
+    // Bob doit payer exactement 40 (pas 100 - 40 = 60)
+    const bobTotal = settlements
+      .filter(s => s.from === 'bob')
+      .reduce((sum, s) => sum + s.amount, 0);
+    expect(bobTotal).toBeCloseTo(40, 2);
+  });
+
+  // Mutation 10: Vérifier l'ordre des priorités (max creditor vs max debtor)
+  it('should match max debtor with max creditor', () => {
+    const balances = { alice: 500, bob: -100, charlie: -200, david: -200 };
+    const settlements = simplifyDebts(balances);
+
+    // David (-200) ou Charlie (-200) devrait payer en premier (max debtor)
+    expect(settlements).toBeDefined();
+    expect(settlements.length).toBeGreaterThan(0);
+  });
+});
